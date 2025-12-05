@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "name": "Update API Documentation",
+  "description": "Monitors API route files for changes and prompts the agent to update the API documentation in .kiro/steering/api-endpoints.md accordingly",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "server/routes/**/*.js"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "An API route file has been modified. Please review the changes and update the API documentation in .kiro/steering/api-endpoints.md to reflect any update functionality in its description, new endpoints, modified parameters, or changed response formats.  Ensure any new endpoint documentation aligns with the same format as the API endpoints currently there. DO NOT MAKE ANY CHANGES TO THE API FILES THEMSELVES, JUST UPDATE THE DOCUMENTATION."
+  },
+  "workspaceFolderName": "TurboBackend-backend",
+  "shortName": "update-api-docs"
+}
