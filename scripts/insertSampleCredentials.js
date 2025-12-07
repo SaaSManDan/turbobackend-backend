@@ -17,32 +17,32 @@ async function insertSampleCredentials() {
       {
         credentialName: 'STRIPE_SECRET_KEY',
         cloudProvider: 'stripe',
-        fields: { STRIPE_SECRET_KEY: '' }
+        value: ''
       },
       {
         credentialName: 'STRIPE_PUBLISHABLE_KEY',
         cloudProvider: 'stripe',
-        fields: { STRIPE_PUBLISHABLE_KEY: '' }
+        value: ''
       },
       {
         credentialName: 'STRIPE_WEBHOOK_SECRET',
         cloudProvider: 'stripe',
-        fields: { STRIPE_WEBHOOK_SECRET: '' }
+        value: ''
       },
       {
         credentialName: 'CLERK_SECRET_KEY',
         cloudProvider: 'clerk',
-        fields: { CLERK_SECRET_KEY: '' }
+        value: ''
       },
       {
         credentialName: 'CLERK_PUBLISHABLE_KEY',
         cloudProvider: 'clerk',
-        fields: { CLERK_PUBLISHABLE_KEY: '' }
+        value: ''
       },
       {
         credentialName: 'CLERK_WEBHOOK_SECRET',
         cloudProvider: 'clerk',
-        fields: { CLERK_WEBHOOK_SECRET: '' }
+        value: ''
       }
     ];
     
@@ -50,7 +50,7 @@ async function insertSampleCredentials() {
     
     for (const cred of credentialsToInsert) {
       const credentialId = nanoid();
-      const encryptedCredential = encryptKey(JSON.stringify(cred.fields));
+      const encryptedCredential = encryptKey(cred.value);
       
       await client.query(
         `INSERT INTO ${process.env.PG_DB_SCHEMA}.cloud_credentials 

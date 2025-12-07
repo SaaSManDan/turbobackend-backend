@@ -28,7 +28,7 @@ import { Server } from 'node:http';
 import crypto from 'node:crypto';
 import { parentPort, threadId } from 'node:worker_threads';
 import { nanoid } from 'file:///Users/danielrodriguez/Desktop/Projects/TurboBackend-backend/node_modules/nanoid/index.js';
-import BullMQ from 'file:///Users/danielrodriguez/Desktop/Projects/TurboBackend-backend/node_modules/bullmq/dist/cjs/index.js';
+import BullMQ, { Queue as Queue$2 } from 'file:///Users/danielrodriguez/Desktop/Projects/TurboBackend-backend/node_modules/bullmq/dist/cjs/index.js';
 import { GetObjectCommand, ListObjectsV2Command, S3Client } from 'file:///Users/danielrodriguez/Desktop/Projects/TurboBackend-backend/node_modules/@aws-sdk/client-s3/dist-cjs/index.js';
 import { Pool } from 'file:///Users/danielrodriguez/Desktop/Projects/TurboBackend-backend/node_modules/pg/esm/index.mjs';
 import Stripe from 'file:///Users/danielrodriguez/Desktop/Projects/TurboBackend-backend/node_modules/stripe/esm/stripe.esm.node.js';
@@ -1024,16 +1024,16 @@ _nvxqqlUv_f8OFSsqWbBJAuFEkCKgV1CPt420lRYzHpc
 const assets = {
   "/index.mjs": {
     "type": "text/javascript; charset=utf-8",
-    "etag": "\"17528-DC/8kirlIu4CmC/ENUC01xo5Vxg\"",
-    "mtime": "2025-12-05T19:47:58.403Z",
-    "size": 95528,
+    "etag": "\"17872-JxYYX2eoEa/emDmlRFvp/H8i6UQ\"",
+    "mtime": "2025-12-07T19:02:35.954Z",
+    "size": 96370,
     "path": "index.mjs"
   },
   "/index.mjs.map": {
     "type": "application/json",
-    "etag": "\"53fa2-Hy5RtIyKSBpdiiyhodwnkuCCfNk\"",
-    "mtime": "2025-12-05T19:47:58.403Z",
-    "size": 343970,
+    "etag": "\"546ee-sPZHQXVXjNHOrRtUOMTx7oTbMl4\"",
+    "mtime": "2025-12-07T19:02:35.954Z",
+    "size": 345838,
     "path": "index.mjs.map"
   }
 };
@@ -1344,6 +1344,7 @@ const _lazy_oGSnUd = () => Promise.resolve().then(function () { return getProjec
 const _lazy_IlUmRc = () => Promise.resolve().then(function () { return getProjectFileContent_get$1; });
 const _lazy_sPiore = () => Promise.resolve().then(function () { return getProjectFiles_get$1; });
 const _lazy_0Ks5sW = () => Promise.resolve().then(function () { return updateCloudCredentials_post$1; });
+const _lazy_0Trh4K = () => Promise.resolve().then(function () { return updateProjectName_post$1; });
 const _lazy_RfXMPi = () => Promise.resolve().then(function () { return index_post$3; });
 const _lazy_I7tX3l = () => Promise.resolve().then(function () { return index_post$1; });
 
@@ -1366,6 +1367,7 @@ const handlers = [
   { route: '/v1/getProjectFileContent', handler: _lazy_IlUmRc, lazy: true, middleware: false, method: "get" },
   { route: '/v1/getProjectFiles', handler: _lazy_sPiore, lazy: true, middleware: false, method: "get" },
   { route: '/v1/updateCloudCredentials', handler: _lazy_0Ks5sW, lazy: true, middleware: false, method: "post" },
+  { route: '/v1/updateProjectName', handler: _lazy_0Trh4K, lazy: true, middleware: false, method: "post" },
   { route: '/webhooks/signup', handler: _lazy_RfXMPi, lazy: true, middleware: false, method: "post" },
   { route: '/webhooks/testRedisJob', handler: _lazy_I7tX3l, lazy: true, middleware: false, method: "post" }
 ];
@@ -2183,25 +2185,15 @@ const getCloudCredentials_get = defineEventHandler(async function(event) {
       [projectId]
     );
     const credentials = result.rows.map(function(cred) {
-      let decryptedCredential = null;
-      let credentialFields = {};
-      let hasMissingFields = false;
+      let credentialValue = "";
+      let hasMissingFields = true;
       try {
-        decryptedCredential = cred.credential ? JSON.parse(decryptKey(cred.credential)) : null;
+        credentialValue = cred.credential ? decryptKey(cred.credential) : "";
       } catch (error) {
         console.error("Error decrypting credential:", error);
       }
-      if (decryptedCredential) {
-        Object.keys(decryptedCredential).forEach(function(key) {
-          const value = decryptedCredential[key];
-          const isEmpty = !value || typeof value === "string" && value.trim() === "";
-          credentialFields[key] = value;
-          if (isEmpty) {
-            hasMissingFields = true;
-          }
-        });
-      } else {
-        hasMissingFields = true;
+      if (credentialValue && credentialValue.trim() !== "") {
+        hasMissingFields = false;
       }
       return {
         credentialId: cred.credential_id,
@@ -2210,7 +2202,7 @@ const getCloudCredentials_get = defineEventHandler(async function(event) {
         defaultRegion: cred.default_region,
         isActive: cred.is_active,
         hasMissingFields,
-        credentialFields,
+        credentialValue,
         createdAt: cred.created_at,
         updatedAt: cred.updated_at
       };
@@ -2622,11 +2614,33 @@ const getProjectFiles_get$1 = /*#__PURE__*/Object.freeze({
   default: getProjectFiles_get
 });
 
+let queues = {};
+function initializeQueues() {
+  const connection = {
+    host: redis.options.host,
+    port: redis.options.port,
+    ...redis.options.username && { username: redis.options.username },
+    ...redis.options.password && { password: redis.options.password },
+    ...redis.options.tls && { tls: redis.options.tls }
+  };
+  queues["turbobackend-queue"] = new Queue$2("turbobackend-queue", {
+    connection
+  });
+  console.log("Job queues initialized");
+  return queues;
+}
+function getQueue(queueName) {
+  if (Object.keys(queues).length === 0) {
+    initializeQueues();
+  }
+  return queues[queueName];
+}
+
 const updateCloudCredentials_post = defineEventHandler(async function(event) {
   const client = await pool.connect();
   try {
     const body = await readBody(event);
-    const { projectId, credentialId, cloudProvider, credentialName, credentials, defaultRegion } = body;
+    const { projectId, credentialId, cloudProvider, credentialName, credentialValue, defaultRegion } = body;
     const userId = event.context.auth.userId;
     if (!projectId) {
       setResponseStatus(event, 400);
@@ -2635,11 +2649,11 @@ const updateCloudCredentials_post = defineEventHandler(async function(event) {
         error: "projectId is required"
       };
     }
-    if (!credentials || typeof credentials !== "object") {
+    if (credentialValue === void 0 || credentialValue === null) {
       setResponseStatus(event, 400);
       return {
         success: false,
-        error: "credentials object is required"
+        error: "credentialValue is required"
       };
     }
     await verifyProjectAccess(userId, projectId);
@@ -2647,7 +2661,7 @@ const updateCloudCredentials_post = defineEventHandler(async function(event) {
     await client.query("BEGIN");
     if (credentialId) {
       const verifyResult = await client.query(
-        `SELECT credential_id, credential FROM ${process.env.PG_DB_SCHEMA}.cloud_credentials 
+        `SELECT credential_id FROM ${process.env.PG_DB_SCHEMA}.cloud_credentials 
          WHERE credential_id = $1 AND project_id = $2`,
         [credentialId, projectId]
       );
@@ -2659,14 +2673,7 @@ const updateCloudCredentials_post = defineEventHandler(async function(event) {
           error: "Credential not found"
         };
       }
-      let existingCredentials = {};
-      try {
-        existingCredentials = verifyResult.rows[0].credential ? JSON.parse(decryptKey(verifyResult.rows[0].credential)) : {};
-      } catch (error) {
-        console.error("Error decrypting existing credential:", error);
-      }
-      const mergedCredentials = { ...existingCredentials, ...credentials };
-      const encryptedCredential = encryptKey(JSON.stringify(mergedCredentials));
+      const encryptedCredential = encryptKey(credentialValue);
       await client.query(
         `UPDATE ${process.env.PG_DB_SCHEMA}.cloud_credentials 
          SET credential = $1, updated_at = $2
@@ -2675,6 +2682,16 @@ const updateCloudCredentials_post = defineEventHandler(async function(event) {
         defaultRegion ? [encryptedCredential, currentTime, defaultRegion, credentialId] : [encryptedCredential, currentTime, credentialId]
       );
       await client.query("COMMIT");
+      try {
+        const queue = getQueue("turbobackend-queue");
+        await queue.add("sync-flyio-secrets", {
+          projectId,
+          credentialName,
+          credentialValue
+        });
+      } catch (queueError) {
+        console.error("Error enqueuing sync-flyio-secrets job:", queueError);
+      }
       return {
         success: true,
         credentialId,
@@ -2690,7 +2707,7 @@ const updateCloudCredentials_post = defineEventHandler(async function(event) {
         };
       }
       const newCredentialId = nanoid();
-      const encryptedCredential = encryptKey(JSON.stringify(credentials));
+      const encryptedCredential = encryptKey(credentialValue);
       await client.query(
         `INSERT INTO ${process.env.PG_DB_SCHEMA}.cloud_credentials 
          (credential_id, project_id, cloud_provider, credential_name, 
@@ -2709,6 +2726,16 @@ const updateCloudCredentials_post = defineEventHandler(async function(event) {
         ]
       );
       await client.query("COMMIT");
+      try {
+        const queue = getQueue("turbobackend-queue");
+        await queue.add("sync-flyio-secrets", {
+          projectId,
+          credentialName: credentialName || `${cloudProvider} Credentials`,
+          credentialValue
+        });
+      } catch (queueError) {
+        console.error("Error enqueuing sync-flyio-secrets job:", queueError);
+      }
       return {
         success: true,
         credentialId: newCredentialId,
@@ -2732,6 +2759,65 @@ const updateCloudCredentials_post = defineEventHandler(async function(event) {
 const updateCloudCredentials_post$1 = /*#__PURE__*/Object.freeze({
   __proto__: null,
   default: updateCloudCredentials_post
+});
+
+const updateProjectName_post = defineEventHandler(async function(event) {
+  const client = await pool.connect();
+  try {
+    const body = await readBody(event);
+    const { projectId, projectName } = body;
+    const userId = event.context.auth.userId;
+    if (!projectId) {
+      setResponseStatus(event, 400);
+      return {
+        success: false,
+        error: "projectId is required"
+      };
+    }
+    if (!projectName) {
+      setResponseStatus(event, 400);
+      return {
+        success: false,
+        error: "projectName is required"
+      };
+    }
+    await verifyProjectAccess(userId, projectId);
+    const currentTime = Math.floor(Date.now() / 1e3);
+    const result = await client.query(
+      `UPDATE ${process.env.PG_DB_SCHEMA}.projects 
+       SET project_name = $1, updated_at = $2
+       WHERE project_id = $3
+       RETURNING project_id, project_name, updated_at`,
+      [projectName, currentTime, projectId]
+    );
+    if (result.rows.length === 0) {
+      setResponseStatus(event, 404);
+      return {
+        success: false,
+        error: "Project not found"
+      };
+    }
+    return {
+      success: true,
+      project: result.rows[0],
+      message: "Project name updated successfully"
+    };
+  } catch (error) {
+    console.error("Error updating project name:", error);
+    const statusCode = error.statusCode || 500;
+    setResponseStatus(event, statusCode);
+    return {
+      success: false,
+      error: error.message || "Failed to update project name"
+    };
+  } finally {
+    client.release();
+  }
+});
+
+const updateProjectName_post$1 = /*#__PURE__*/Object.freeze({
+  __proto__: null,
+  default: updateProjectName_post
 });
 
 const stripeSecret = process.env.STRIPE_STANDARD_SECRET_KEY;

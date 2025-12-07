@@ -1,14 +1,15 @@
 import pool from '../../services/dbConnectors/postgresConnector.js';
 import { verifyProjectAccess } from '../../utils/rlsCheck.js';
-import { encryptKey, decryptKey } from '../../utils/encryption.js';
+import { encryptKey } from '../../utils/encryption.js';
 import { nanoid } from 'nanoid';
+import { getQueue } from '../../services/jobQueue.js';
 
 export default defineEventHandler(async function(event) {
   const client = await pool.connect();
   
   try {
     const body = await readBody(event);
-    const { projectId, credentialId, cloudProvider, credentialName, credentials, defaultRegion } = body;
+    const { projectId, credentialId, cloudProvider, credentialName, credentialValue, defaultRegion } = body;
     const userId = event.context.auth.userId;
     
     // Validate input
@@ -20,11 +21,11 @@ export default defineEventHandler(async function(event) {
       };
     }
     
-    if (!credentials || typeof credentials !== 'object') {
+    if (credentialValue === undefined || credentialValue === null) {
       setResponseStatus(event, 400);
       return {
         success: false,
-        error: 'credentials object is required'
+        error: 'credentialValue is required'
       };
     }
     
@@ -40,7 +41,7 @@ export default defineEventHandler(async function(event) {
     if (credentialId) {
       // Verify credential belongs to project
       const verifyResult = await client.query(
-        `SELECT credential_id, credential FROM ${process.env.PG_DB_SCHEMA}.cloud_credentials 
+        `SELECT credential_id FROM ${process.env.PG_DB_SCHEMA}.cloud_credentials 
          WHERE credential_id = $1 AND project_id = $2`,
         [credentialId, projectId]
       );
@@ -54,18 +55,7 @@ export default defineEventHandler(async function(event) {
         };
       }
       
-      // Merge existing credentials with new ones
-      let existingCredentials = {};
-      try {
-        existingCredentials = verifyResult.rows[0].credential 
-          ? JSON.parse(decryptKey(verifyResult.rows[0].credential))
-          : {};
-      } catch (error) {
-        console.error('Error decrypting existing credential:', error);
-      }
-      
-      const mergedCredentials = { ...existingCredentials, ...credentials };
-      const encryptedCredential = encryptKey(JSON.stringify(mergedCredentials));
+      const encryptedCredential = encryptKey(credentialValue);
       
       // Update credential
       await client.query(
@@ -79,6 +69,19 @@ export default defineEventHandler(async function(event) {
       );
       
       await client.query('COMMIT');
+      
+      // Enqueue job to sync secret to Fly.io
+      try {
+        const queue = getQueue('turbobackend-queue');
+        await queue.add('sync-flyio-secrets', {
+          projectId: projectId,
+          credentialName: credentialName,
+          credentialValue: credentialValue
+        });
+      } catch (queueError) {
+        console.error('Error enqueuing sync-flyio-secrets job:', queueError);
+        // Don't fail the request if queue fails
+      }
       
       return {
         success: true,
@@ -98,7 +101,7 @@ export default defineEventHandler(async function(event) {
       }
       
       const newCredentialId = nanoid();
-      const encryptedCredential = encryptKey(JSON.stringify(credentials));
+      const encryptedCredential = encryptKey(credentialValue);
       
       await client.query(
         `INSERT INTO ${process.env.PG_DB_SCHEMA}.cloud_credentials 
@@ -119,6 +122,19 @@ export default defineEventHandler(async function(event) {
       );
       
       await client.query('COMMIT');
+      
+      // Enqueue job to sync secret to Fly.io
+      try {
+        const queue = getQueue('turbobackend-queue');
+        await queue.add('sync-flyio-secrets', {
+          projectId: projectId,
+          credentialName: credentialName || `${cloudProvider} Credentials`,
+          credentialValue: credentialValue
+        });
+      } catch (queueError) {
+        console.error('Error enqueuing sync-flyio-secrets job:', queueError);
+        // Don't fail the request if queue fails
+      }
       
       return {
         success: true,

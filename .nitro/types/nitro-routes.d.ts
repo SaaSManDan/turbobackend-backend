@@ -45,6 +45,9 @@ declare module "nitropack/types" {
     '/v1/updateCloudCredentials': {
       'post': Simplify<Serialize<Awaited<ReturnType<typeof import('../../server/routes/v1/updateCloudCredentials.post').default>>>>
     }
+    '/v1/updateProjectName': {
+      'post': Simplify<Serialize<Awaited<ReturnType<typeof import('../../server/routes/v1/updateProjectName.post').default>>>>
+    }
     '/webhooks/signup': {
       'post': Simplify<Serialize<Awaited<ReturnType<typeof import('../../server/routes/webhooks/signup/index.post').default>>>>
     }

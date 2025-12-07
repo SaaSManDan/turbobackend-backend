@@ -34,28 +34,17 @@ export default defineEventHandler(async function(event) {
     
     // Process credentials and decrypt values
     const credentials = result.rows.map(function(cred) {
-      let decryptedCredential = null;
-      let credentialFields = {};
-      let hasMissingFields = false;
+      let credentialValue = '';
+      let hasMissingFields = true;
       
       try {
-        decryptedCredential = cred.credential ? JSON.parse(decryptKey(cred.credential)) : null;
+        credentialValue = cred.credential ? decryptKey(cred.credential) : '';
       } catch (error) {
         console.error('Error decrypting credential:', error);
       }
       
-      if (decryptedCredential) {
-        // Return actual credential values
-        Object.keys(decryptedCredential).forEach(function(key) {
-          const value = decryptedCredential[key];
-          const isEmpty = !value || (typeof value === 'string' && value.trim() === '');
-          credentialFields[key] = value;
-          if (isEmpty) {
-            hasMissingFields = true;
-          }
-        });
-      } else {
-        hasMissingFields = true;
+      if (credentialValue && credentialValue.trim() !== '') {
+        hasMissingFields = false;
       }
       
       return {
@@ -65,7 +54,7 @@ export default defineEventHandler(async function(event) {
         defaultRegion: cred.default_region,
         isActive: cred.is_active,
         hasMissingFields: hasMissingFields,
-        credentialFields: credentialFields,
+        credentialValue: credentialValue,
         createdAt: cred.created_at,
         updatedAt: cred.updated_at
       };
